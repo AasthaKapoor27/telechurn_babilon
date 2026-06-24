@@ -5,10 +5,5 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: MODEL_PATH
-        value: ./full_churn_pipeline (1).pkl
-    disk:
-      name: model-storage
-      mountPath: /opt/render/project/src
-      sizeGB: 1
+    # MODEL_PATH defaults to backend/model.pkl (committed to repo)
+    # Override here if you rename the file

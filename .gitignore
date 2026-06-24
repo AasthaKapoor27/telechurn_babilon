@@ -9,8 +9,10 @@ dist/
 build/
 .eggs/
 
-# ── Model pickle (large binary — ship separately / via DVC / LFS) ───
+# ── Model pickle ────────────────────────────────────────────────────
+# Ignore all pkl files EXCEPT the one committed inside backend/
 *.pkl
+!backend/model.pkl
 
 # ── Environment / secrets ───────────────────────────────────────────
 .env

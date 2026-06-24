@@ -49,7 +49,7 @@ app.add_middleware(
 # Model loading — cached so it is loaded exactly once per process lifetime
 # ---------------------------------------------------------------------------
 _MODEL_PATH_DEFAULT = str(
-    Path(__file__).parent.parent / "full_churn_pipeline (1).pkl"
+    Path(__file__).parent / "model.pkl"
 )
 
 
