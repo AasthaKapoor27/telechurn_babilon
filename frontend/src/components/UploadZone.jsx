@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-const ACCEPTED = ['.csv', '.xlsx', '.xls'];
+const ACCEPTED_EXT  = ['.csv', '.xlsx', '.xls'];
 const ACCEPTED_MIME = [
   'text/csv',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -8,7 +8,7 @@ const ACCEPTED_MIME = [
 ];
 
 function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024)    return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
@@ -20,7 +20,7 @@ export default function UploadZone({ onFile, loading }) {
 
   function accept(f) {
     const ext = '.' + f.name.split('.').pop().toLowerCase();
-    if (!ACCEPTED.includes(ext) && !ACCEPTED_MIME.includes(f.type)) {
+    if (!ACCEPTED_EXT.includes(ext) && !ACCEPTED_MIME.includes(f.type)) {
       alert('Please upload a .csv or .xlsx file.');
       return;
     }
@@ -70,19 +70,18 @@ export default function UploadZone({ onFile, loading }) {
           onChange={onInputChange}
           aria-hidden="true"
         />
+
         <div className="upload-icon">📊</div>
         <p className="upload-title">
           {dragging ? 'Drop it here!' : 'Drop your subscriber file'}
         </p>
         <p className="upload-hint">
-          Drag & drop or click to browse — CSV or Excel accepted
+          Drag & drop or click to browse
         </p>
-        <span className="upload-badge">
-          <span>📄</span> .csv
-        </span>
-        <span className="upload-badge" style={{ marginLeft: 8 }}>
-          <span>📗</span> .xlsx
-        </span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 16 }}>
+          <span className="upload-badge"><span>📄</span> .csv</span>
+          <span className="upload-badge"><span>📗</span> .xlsx</span>
+        </div>
       </div>
 
       {file && (
@@ -90,7 +89,7 @@ export default function UploadZone({ onFile, loading }) {
           <div className="file-preview-icon">
             {file.name.endsWith('.csv') ? '📄' : '📗'}
           </div>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div className="file-preview-name">{file.name}</div>
             <div className="file-preview-meta">{formatBytes(file.size)}</div>
           </div>
@@ -100,6 +99,7 @@ export default function UploadZone({ onFile, loading }) {
             aria-label="Remove file"
             id="remove-file-btn"
             disabled={loading}
+            style={{ marginLeft: 'auto' }}
           >
             ✕
           </button>
