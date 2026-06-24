@@ -1,0 +1,9 @@
+scikit-learn==1.6.1
+xgboost==3.2.0
+lightgbm==4.6.0
+joblib==1.5.3
+fastapi
+uvicorn[standard]
+python-multipart
+pandas
+openpyxl
