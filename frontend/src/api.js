@@ -1,4 +1,6 @@
-const API_BASE = 'http://localhost:8000';
+// In production the hosting platform routes /_/backend → the FastAPI service.
+// In local dev, Vite proxies /_/backend → http://localhost:8000 (see vite.config.js).
+const API_BASE = '/_/backend';
 
 /**
  * POST /predict — send a File object, receive predictions JSON.
