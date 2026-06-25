@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from features import engineer_features, validate_columns, assign_risk_level
+from features import engineer_features, validate_columns, assign_risk_level, clean_and_standardize_columns
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -90,9 +90,20 @@ def _read_uploaded_file(upload: UploadFile) -> pd.DataFrame:
 
     if ext == ".csv":
         try:
+            # Try default C engine first
             return pd.read_csv(buf)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Failed to parse CSV: {exc}")
+        except Exception:
+            try:
+                # If default fails, try autodetecting delimiter (python engine)
+                buf.seek(0)
+                return pd.read_csv(buf, sep=None, engine="python")
+            except Exception:
+                try:
+                    # Fallback to semicolon
+                    buf.seek(0)
+                    return pd.read_csv(buf, sep=";")
+                except Exception as exc:
+                    raise HTTPException(status_code=422, detail=f"Failed to parse CSV: {exc}")
     else:
         try:
             return pd.read_excel(buf, engine="openpyxl")
@@ -127,6 +138,9 @@ async def predict(file: UploadFile = File(...)):
 
     # 1. Read file into DataFrame
     raw_df = _read_uploaded_file(file)
+
+    # Clean and standardize columns (handles lowercase, strip whitespace, etc.)
+    raw_df = clean_and_standardize_columns(raw_df)
 
     # 2. Validate required columns
     missing = validate_columns(raw_df)

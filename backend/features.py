@@ -23,9 +23,33 @@ REQUIRED_RAW_COLUMNS = [
 ]
 
 
+def clean_and_standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean column names by stripping whitespace and mapping them 
+    case-insensitively to the expected REQUIRED_RAW_COLUMNS.
+    """
+    df = df.copy()
+    # Strip whitespace from column headers
+    df.columns = df.columns.astype(str).str.strip()
+    
+    # Map lowercase version of expected columns to their exact casing
+    expected_map = {col.lower(): col for col in REQUIRED_RAW_COLUMNS}
+    
+    rename_map = {}
+    for col in df.columns:
+        if col.lower() in expected_map:
+            rename_map[col] = expected_map[col.lower()]
+            
+    if rename_map:
+        df = df.rename(columns=rename_map)
+        
+    return df
+
+
 def validate_columns(df: pd.DataFrame) -> list[str]:
     """Return a list of missing required column names (empty = OK)."""
     return [c for c in REQUIRED_RAW_COLUMNS if c not in df.columns]
+
 
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
