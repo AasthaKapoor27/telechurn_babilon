@@ -142,15 +142,8 @@ async def predict(file: UploadFile = File(...)):
         # 1. Read file into DataFrame
         raw_df = _read_uploaded_file(file)
         
-        # Add a hard row limit to prevent Out-Of-Memory (OOM) crashes on huge files
-        MAX_ROWS = 300_000
-        if len(raw_df) > MAX_ROWS:
-            print(f"[PREDICT] Error: File too large ({len(raw_df)} rows). Max allowed is {MAX_ROWS}.")
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large to process in a single request. Max rows: {MAX_ROWS}. Uploaded: {len(raw_df)}.",
-            )
-
+        # No hard row limit anymore; we process in chunks to prevent OOM
+        
         # Clean and standardize columns (handles lowercase, strip whitespace, etc.)
         raw_df = clean_and_standardize_columns(raw_df)
 
@@ -166,22 +159,38 @@ async def predict(file: UploadFile = File(...)):
                 },
             )
 
-        print(f"[PREDICT] Step 3: Running feature engineering on {len(raw_df)} rows...")
-        # 3. Feature engineering
-        engineered_df = engineer_features(raw_df)
-
-        print(f"[PREDICT] Step 4: Loading pipeline and running inference...")
-        # 4. Load pipeline & run inference
+        print(f"[PREDICT] Step 3: Loading pipeline...")
+        # 3. Load pipeline (only once)
         pipeline = _load_pipeline()
-        predictions = pipeline.predict(engineered_df)
-        probabilities = pipeline.predict_proba(engineered_df)[:, 1]
-
-        print(f"[PREDICT] Step 5: Building result DataFrame...")
-        # 5. Build result DataFrame (original raw columns + predictions)
-        result_df = raw_df.copy()
-        result_df["churn_prediction"] = predictions.astype(int)
-        result_df["churn_probability"] = probabilities.round(4)
-        result_df["risk_level"] = [assign_risk_level(p) for p in probabilities]
+        
+        print(f"[PREDICT] Step 4: Running feature engineering and inference in batches...")
+        # 4. Process in batches to save memory
+        CHUNK_SIZE = 50_000
+        result_chunks = []
+        
+        for start_idx in range(0, len(raw_df), CHUNK_SIZE):
+            end_idx = start_idx + CHUNK_SIZE
+            chunk_df = raw_df.iloc[start_idx:end_idx].copy()
+            print(f"  -> Processing chunk {start_idx} to min({end_idx}, {len(raw_df)})...")
+            
+            # Feature engineering on chunk
+            engineered_chunk = engineer_features(chunk_df)
+            
+            # Inference on chunk
+            chunk_preds = pipeline.predict(engineered_chunk)
+            chunk_probs = pipeline.predict_proba(engineered_chunk)[:, 1]
+            
+            # Build result chunk
+            chunk_result = chunk_df.copy()
+            chunk_result["churn_prediction"] = chunk_preds.astype(int)
+            chunk_result["churn_probability"] = chunk_probs.round(4)
+            chunk_result["risk_level"] = [assign_risk_level(p) for p in chunk_probs]
+            
+            result_chunks.append(chunk_result)
+            
+        print(f"[PREDICT] Step 5: Concatenating {len(result_chunks)} result batches...")
+        # 5. Concatenate all batches back into a single result DataFrame
+        result_df = pd.concat(result_chunks, ignore_index=True)
 
         print(f"[PREDICT] Step 6: Caching predictions for download...")
         # 6. Cache as CSV for /download
