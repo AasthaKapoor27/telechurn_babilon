@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import UploadZone from './components/UploadZone';
 import SummaryCards from './components/SummaryCards';
 import ResultsTable from './components/ResultsTable';
-import { predictChurn, downloadPredictions } from './api';
+import { predictChurn, downloadPredictions, pingServer } from './api';
 
 function computeStats(results) {
   const total = results.length;
@@ -70,6 +70,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError]     = useState(null);
+
+  useEffect(() => {
+    // Proactively wake up the free-tier Render server on page load
+    pingServer();
+  }, []);
 
   const stats = useMemo(
     () => (results ? computeStats(results) : null),
@@ -150,7 +155,10 @@ export default function App() {
             aria-busy={loading}
           >
             {loading ? (
-              <><span className="spinner" /> Analysing subscribers…</>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.2 }}>
+                <div><span className="spinner" /> Analysing subscribers…</div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px', fontWeight: 'normal' }}>Waking up server, this may take up to a minute on first request</div>
+              </div>
             ) : (
               <>⚡ Run Churn Prediction</>
             )}

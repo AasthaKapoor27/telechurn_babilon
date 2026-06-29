@@ -12,10 +12,24 @@ export async function predictChurn(file) {
   const url = `${API_BASE}/predict`;
   console.log(`[API] Initiating fetch to exact URL: ${url}`);
   
-  const res = await fetch(url, {
-    method: 'POST',
-    body: form,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 seconds timeout
+  
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error("Request timed out (90 seconds). The server might still be waking up, or the file is too large.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = await res.json();
 
@@ -38,4 +52,16 @@ export async function predictChurn(file) {
  */
 export function downloadPredictions() {
   window.open(`${API_BASE}/download`, '_blank');
+}
+
+/**
+ * GET /health — ping the server to wake it up from cold start
+ */
+export async function pingServer() {
+  try {
+    console.log(`[API] Pinging server to wake up: ${API_BASE}/health`);
+    await fetch(`${API_BASE}/health`);
+  } catch (err) {
+    console.warn("[API] Ping failed (expected if server is fully asleep or CORS blocks early preflight).", err);
+  }
 }
