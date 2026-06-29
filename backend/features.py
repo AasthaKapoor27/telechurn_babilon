@@ -66,6 +66,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         "ROAMING_CHARGE", "OTHER_CHARGE", "AGE",
     ]
     for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
         df[col] = df[col].fillna(df[col].median())
         df[col] = df[col].clip(lower=0)
 
