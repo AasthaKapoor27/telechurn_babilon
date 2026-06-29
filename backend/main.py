@@ -9,6 +9,7 @@ import io
 import os
 import sys
 import json
+import traceback
 from pathlib import Path
 from functools import lru_cache
 from typing import Any
@@ -136,55 +137,73 @@ async def predict(file: UploadFile = File(...)):
     """
     global _last_result_csv
 
-    # 1. Read file into DataFrame
-    raw_df = _read_uploaded_file(file)
-
-    # Clean and standardize columns (handles lowercase, strip whitespace, etc.)
-    raw_df = clean_and_standardize_columns(raw_df)
-
-    # 2. Validate required columns
-    missing = validate_columns(raw_df)
-    if missing:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "Required columns are missing from the uploaded file.",
-                "missing_columns": missing,
-            },
-        )
-
-    # 3. Feature engineering
     try:
+        print(f"[PREDICT] Step 1: Reading uploaded file '{file.filename}'...")
+        # 1. Read file into DataFrame
+        raw_df = _read_uploaded_file(file)
+        
+        # Add a hard row limit to prevent Out-Of-Memory (OOM) crashes on huge files
+        MAX_ROWS = 300_000
+        if len(raw_df) > MAX_ROWS:
+            print(f"[PREDICT] Error: File too large ({len(raw_df)} rows). Max allowed is {MAX_ROWS}.")
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large to process in a single request. Max rows: {MAX_ROWS}. Uploaded: {len(raw_df)}.",
+            )
+
+        # Clean and standardize columns (handles lowercase, strip whitespace, etc.)
+        raw_df = clean_and_standardize_columns(raw_df)
+
+        print(f"[PREDICT] Step 2: Validating required columns...")
+        # 2. Validate required columns
+        missing = validate_columns(raw_df)
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Required columns are missing from the uploaded file.",
+                    "missing_columns": missing,
+                },
+            )
+
+        print(f"[PREDICT] Step 3: Running feature engineering on {len(raw_df)} rows...")
+        # 3. Feature engineering
         engineered_df = engineer_features(raw_df)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Feature engineering failed: {exc}",
-        )
 
-    # 4. Load pipeline & run inference
-    try:
+        print(f"[PREDICT] Step 4: Loading pipeline and running inference...")
+        # 4. Load pipeline & run inference
         pipeline = _load_pipeline()
         predictions = pipeline.predict(engineered_df)
         probabilities = pipeline.predict_proba(engineered_df)[:, 1]
+
+        print(f"[PREDICT] Step 5: Building result DataFrame...")
+        # 5. Build result DataFrame (original raw columns + predictions)
+        result_df = raw_df.copy()
+        result_df["churn_prediction"] = predictions.astype(int)
+        result_df["churn_probability"] = probabilities.round(4)
+        result_df["risk_level"] = [assign_risk_level(p) for p in probabilities]
+
+        print(f"[PREDICT] Step 6: Caching predictions for download...")
+        # 6. Cache as CSV for /download
+        _last_result_csv = result_df.to_csv(index=False)
+
+        print(f"[PREDICT] Step 7: Sending JSON response back to frontend...")
+        # 7. Return JSON
+        records: list[dict[str, Any]] = json.loads(result_df.to_json(orient="records"))
+        return JSONResponse(content={"count": len(records), "results": records})
+
+    except HTTPException:
+        # Let FastAPI/Starlette handle known HTTP exceptions properly
+        raise
     except Exception as exc:
-        raise HTTPException(
+        # Catch absolutely anything else (OOM, pandas bug, logic error, etc.)
+        print("\n--- FATAL ERROR IN /PREDICT ENDPOINT ---")
+        print(traceback.format_exc())
+        print("------------------------------------------\n")
+        return JSONResponse(
             status_code=500,
-            detail=f"Model inference failed: {exc}",
+            content={"status": "error", "detail": "An unexpected error occurred while processing the file. Check server logs."}
         )
-
-    # 5. Build result DataFrame (original raw columns + predictions)
-    result_df = raw_df.copy()
-    result_df["churn_prediction"] = predictions.astype(int)
-    result_df["churn_probability"] = probabilities.round(4)
-    result_df["risk_level"] = [assign_risk_level(p) for p in probabilities]
-
-    # 6. Cache as CSV for /download
-    _last_result_csv = result_df.to_csv(index=False)
-
-    # 7. Return JSON
-    records: list[dict[str, Any]] = json.loads(result_df.to_json(orient="records"))
-    return JSONResponse(content={"count": len(records), "results": records})
 
 
 @app.get("/download", tags=["Export"])
