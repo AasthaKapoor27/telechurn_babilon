@@ -38,6 +38,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    print("=========================================================")
+    print("🚀 BABYLON TELECHURN BACKEND SERVER IS RUNNING & LISTENING")
+    print("=========================================================")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Same-origin in production; * keeps local dev flexible

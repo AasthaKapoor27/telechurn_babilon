@@ -9,7 +9,10 @@ export async function predictChurn(file) {
   const form = new FormData();
   form.append('file', file);
 
-  const res = await fetch(`${API_BASE}/predict`, {
+  const url = `${API_BASE}/predict`;
+  console.log(`[API] Initiating fetch to exact URL: ${url}`);
+  
+  const res = await fetch(url, {
     method: 'POST',
     body: form,
   });
