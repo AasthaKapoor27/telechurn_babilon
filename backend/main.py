@@ -171,8 +171,10 @@ async def predict(file: UploadFile = File(...)):
         
         print(f"[PREDICT] Step 4: Running feature engineering and inference in batches...")
         # 4. Process in batches to save memory
-        CHUNK_SIZE = 50_000
-        result_chunks = []
+        CHUNK_SIZE = 25_000 # reduced chunk size to further lower peak memory
+        records = []
+        csv_buffer = io.StringIO()
+        import gc
         
         for start_idx in range(0, len(raw_df), CHUNK_SIZE):
             end_idx = start_idx + CHUNK_SIZE
@@ -187,24 +189,34 @@ async def predict(file: UploadFile = File(...)):
             chunk_probs = pipeline.predict_proba(engineered_chunk)[:, 1]
             
             # Build result chunk
-            chunk_result = chunk_df.copy()
-            chunk_result["churn_prediction"] = chunk_preds.astype(int)
-            chunk_result["churn_probability"] = chunk_probs.round(4)
-            chunk_result["risk_level"] = [assign_risk_level(p) for p in chunk_probs]
+            chunk_df["churn_prediction"] = chunk_preds.astype(int)
+            chunk_df["churn_probability"] = chunk_probs.round(4)
+            chunk_df["risk_level"] = [assign_risk_level(p) for p in chunk_probs]
             
-            result_chunks.append(chunk_result)
+            # 1. Write this chunk's CSV directly to the in-memory string buffer 
+            # (include headers only on the very first chunk)
+            chunk_df.to_csv(csv_buffer, index=False, header=(start_idx == 0))
             
-        print(f"[PREDICT] Step 5: Concatenating {len(result_chunks)} result batches...")
-        # 5. Concatenate all batches back into a single result DataFrame
-        result_df = pd.concat(result_chunks, ignore_index=True)
+            # 2. Extract records for the JSON response
+            # Using .to_dict() is far more memory efficient than json.loads(df.to_json())
+            records.extend(chunk_df.to_dict(orient="records"))
+            
+            # Free memory immediately to prevent Render from OOM crashing
+            del chunk_df
+            del engineered_chunk
+            gc.collect()
+            
+        print(f"[PREDICT] Step 5: Freeing original raw data from memory...")
+        del raw_df
+        gc.collect()
 
         print(f"[PREDICT] Step 6: Caching predictions for download...")
-        # 6. Cache as CSV for /download
-        _last_result_csv = result_df.to_csv(index=False)
+        # 6. Cache the accumulated CSV buffer
+        _last_result_csv = csv_buffer.getvalue()
+        csv_buffer.close()
 
         print(f"[PREDICT] Step 7: Sending JSON response back to frontend...")
         # 7. Return JSON
-        records: list[dict[str, Any]] = json.loads(result_df.to_json(orient="records"))
         return JSONResponse(content={"count": len(records), "results": records})
 
     except HTTPException:
